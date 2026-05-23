@@ -1,10 +1,41 @@
 from Crypto.Cipher import AES
 from Crypto.Random import get_random_bytes
 from Crypto.Util.Padding import pad, unpad
+import binascii
 
 
 def generate_key() -> bytes:
-    return get_random_bytes(32)  # AES-256
+    """Генерирует случайный AES-256 ключ (32 байта)"""
+    return get_random_bytes(32)
+
+
+def generate_key_hex() -> str:
+    """Генерирует случайный ключ в hex-формате для отображения"""
+    return generate_key().hex()
+
+
+def key_from_hex(hex_key: str) -> bytes:
+    """Преобразует hex-строку в bytes ключ"""
+    try:
+        return binascii.unhexlify(hex_key)
+    except binascii.Error:
+        raise ValueError("Неверный формат ключа. Ключ должен быть в hex.")
+
+
+def key_to_hex(key: bytes) -> str:
+    """Преобразует bytes ключ в hex-строку"""
+    return key.hex()
+
+
+def validate_key(hex_key: str) -> bool:
+    """Проверяет, что ключ — корректный hex из 64 символов (32 байта)"""
+    if len(hex_key) != 64:
+        return False
+    try:
+        binascii.unhexlify(hex_key)
+        return True
+    except binascii.Error:
+        return False
 
 
 def encrypt(data: bytes, key: bytes) -> bytes:

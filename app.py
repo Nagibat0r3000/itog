@@ -34,55 +34,65 @@ def index():
 
 @app.route("/generate-key", methods=["POST"])
 def generate_key():
-    key = crypt.generate_key()
-    key_path = os.path.join(UPLOAD_DIR, f"{uuid.uuid4().hex}.key")
-    with open(key_path, "wb") as f:
-        f.write(key)
-    return send_file(key_path, as_attachment=True, download_name="secret.key")
+    """Генерирует случайный ключ и возвращает его в виде hex-строки"""
+    key_hex = crypt.generate_key_hex()
+    return jsonify({"key": key_hex})
 
 
 @app.route("/encrypt", methods=["POST"])
 def encrypt():
     file = request.files.get("file")
-    key_file = request.files.get("key_file")
+    key_hex = request.form.get("key")
 
-    if not file or not key_file:
-        return jsonify({"error": "Нужен файл и ключ"}), 400
+    if not file:
+        return jsonify({"error": "Нужен файл"}), 400
+    
+    if not key_hex:
+        return jsonify({"error": "Нужен ключ"}), 400
+
+    # Проверка и преобразование ключа
+    if not crypt.validate_key(key_hex):
+        return jsonify({"error": "Неверный формат ключа. Ключ должен быть 64 hex-символа (32 байта)"}), 400
 
     src = _save(file)
-    key_path = _save(key_file)
     out = src + ".enc"
 
     try:
-        key = open(key_path, "rb").read()
+        key = crypt.key_from_hex(key_hex)
         data = open(src, "rb").read()
         open(out, "wb").write(crypt.encrypt(data, key))
         return send_file(out, as_attachment=True, download_name=file.filename + ".enc")
     except Exception as e:
         return jsonify({"error": str(e)}), 500
     finally:
-        _cleanup(src, key_path)
+        _cleanup(src, out)
 
 
 @app.route("/decrypt", methods=["POST"])
 def decrypt():
     file = request.files.get("file")
-    key_file = request.files.get("key_file")
+    key_hex = request.form.get("key")
 
-    if not file or not key_file:
-        return jsonify({"error": "Нужен файл и ключ"}), 400
+    if not file:
+        return jsonify({"error": "Нужен файл"}), 400
+    
+    if not key_hex:
+        return jsonify({"error": "Нужен ключ"}), 400
+
+    # Проверка и преобразование ключа
+    if not crypt.validate_key(key_hex):
+        return jsonify({"error": "Неверный формат ключа. Ключ должен быть 64 hex-символа (32 байта)"}), 400
 
     src = _save(file)
-    key_path = _save(key_file)
-    out_name = file.filename[:-4] if file.filename.endswith(".enc") else file.filename
+    out_name = file.filename[:-4] if file.filename.endswith(".enc") else file.filename + ".dec"
     out = src + ".dec"
 
     try:
-        key = open(key_path, "rb").read()
+        key = crypt.key_from_hex(key_hex)
         data = open(src, "rb").read()
         open(out, "wb").write(crypt.decrypt(data, key))
         return send_file(out, as_attachment=True, download_name=out_name)
     except Exception as e:
         return jsonify({"error": "Неверный ключ или повреждённый файл"}), 400
     finally:
-        _cleanup(src, key_path)
+        _cleanup(src, out)
