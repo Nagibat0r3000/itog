@@ -1,2 +1,3 @@
 flask
 pycryptodome
+мозг более 1кг
