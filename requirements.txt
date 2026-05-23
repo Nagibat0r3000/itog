@@ -1,3 +1,0 @@
-flask
-pycryptodome
-мозг более 2кг
