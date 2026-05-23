@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>AES Vault</title>
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;700;800&family=Fira+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:      #f5f3ef;
+      --surface: #ffffff;
+      --border:  #e0ddd7;
+      --ink:     #1a1814;
+      --muted:   #9c9890;
+      --accent:  #1a1814;
+      --green:   #2d6a4f;
+      --red:     #9b2226;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--ink);
+      font-family: 'Syne', sans-serif;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 3rem 1rem 4rem;
+    }
+
+    header {
+      text-align: center;
+      margin-bottom: 3rem;
+    }
+    header h1 {
+      font-size: 2.8rem;
+      font-weight: 800;
+      letter-spacing: -.03em;
+    }
+    header p {
+      color: var(--muted);
+      font-size: .9rem;
+      margin-top: .4rem;
+      font-family: 'Fira Mono', monospace;
+    }
+
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 1.5rem;
+      width: 100%;
+      max-width: 860px;
+    }
+
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 1.75rem;
+    }
+
+    .card h2 {
+      font-size: 1rem;
+      font-weight: 700;
+      letter-spacing: .04em;
+      text-transform: uppercase;
+      margin-bottom: .3rem;
+    }
+    .card p {
+      color: var(--muted);
+      font-size: .82rem;
+      line-height: 1.5;
+      margin-bottom: 1.25rem;
+      font-family: 'Fira Mono', monospace;
+    }
+
+    /* file drop */
+    .drop {
+      border: 1.5px dashed var(--border);
+      border-radius: 10px;
+      padding: .75rem 1rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: .75rem;
+      cursor: pointer;
+      transition: border-color .15s, background .15s;
+    }
+    .drop:hover, .drop.over { border-color: var(--ink); background: #f9f8f6; }
+    .drop.filled { border-style: solid; border-color: #bbb; }
+
+    .drop-label {
+      font-size: .8rem;
+      font-family: 'Fira Mono', monospace;
+      color: var(--muted);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 60%;
+    }
+    .drop.filled .drop-label { color: var(--ink); }
+
+    .btn-pick {
+      font-family: 'Fira Mono', monospace;
+      font-size: .72rem;
+      padding: .3rem .8rem;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: var(--bg);
+      cursor: pointer;
+      transition: border-color .15s;
+      white-space: nowrap;
+    }
+    .btn-pick:hover { border-color: var(--ink); }
+
+    .btn {
+      width: 100%;
+      padding: .75rem;
+      border: none;
+      border-radius: 10px;
+      font-family: 'Syne', sans-serif;
+      font-size: .9rem;
+      font-weight: 700;
+      cursor: pointer;
+      transition: opacity .15s, transform .1s;
+      margin-top: .25rem;
+    }
+    .btn:active { transform: scale(.98); }
+    .btn:disabled { opacity: .4; cursor: not-allowed; }
+
+    .btn-dark { background: var(--ink); color: #fff; }
+    .btn-dark:hover:not(:disabled) { opacity: .85; }
+
+    .status {
+      font-family: 'Fira Mono', monospace;
+      font-size: .75rem;
+      margin-top: .75rem;
+      min-height: 1em;
+      padding: .5rem .75rem;
+      border-radius: 7px;
+      display: none;
+    }
+    .status.ok  { display: block; background: #d8f3dc; color: var(--green); }
+    .status.err { display: block; background: #f9dada; color: var(--red); }
+
+    /* key card special */
+    .card-key .btn { background: var(--ink); color: #fff; }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>AES Vault</h1>
+  <p>AES-256-CBC · шифрование файлов</p>
+</header>
+
+<div class="cards">
+
+  <!-- KEY -->
+  <div class="card card-key">
+    <h2>Ключ</h2>
+    <p>Сгенерируй ключ и сохрани его. Без ключа расшифровка невозможна.</p>
+    <button class="btn btn-dark" onclick="generateKey()">Сгенерировать и скачать</button>
+  </div>
+
+  <!-- ENCRYPT -->
+  <div class="card">
+    <h2>Зашифровать</h2>
+    <p>Файл + ключ → скачаешь .enc</p>
+
+    <div class="drop" id="enc-drop" onclick="document.getElementById('enc-file').click()">
+      <span class="drop-label" id="enc-file-label">выбери файл</span>
+      <button class="btn-pick" onclick="event.stopPropagation(); document.getElementById('enc-file').click()">Обзор</button>
+    </div>
+    <input type="file" id="enc-file" hidden>
+
+    <div class="drop" id="enc-key-drop" onclick="document.getElementById('enc-key').click()">
+      <span class="drop-label" id="enc-key-label">выбери .key</span>
+      <button class="btn-pick" onclick="event.stopPropagation(); document.getElementById('enc-key').click()">Обзор</button>
+    </div>
+    <input type="file" id="enc-key" accept=".key" hidden>
+
+    <button class="btn btn-dark" id="btn-enc" onclick="doEncrypt()">Зашифровать →</button>
+    <div class="status" id="enc-status"></div>
+  </div>
+
+  <!-- DECRYPT -->
+  <div class="card">
+    <h2>Расшифровать</h2>
+    <p>.enc файл + ключ → оригинал</p>
+
+    <div class="drop" id="dec-drop" onclick="document.getElementById('dec-file').click()">
+      <span class="drop-label" id="dec-file-label">выбери .enc файл</span>
+      <button class="btn-pick" onclick="event.stopPropagation(); document.getElementById('dec-file').click()">Обзор</button>
+    </div>
+    <input type="file" id="dec-file" accept=".enc" hidden>
+
+    <div class="drop" id="dec-key-drop" onclick="document.getElementById('dec-key').click()">
+      <span class="drop-label" id="dec-key-label">выбери .key</span>
+      <button class="btn-pick" onclick="event.stopPropagation(); document.getElementById('dec-key').click()">Обзор</button>
+    </div>
+    <input type="file" id="dec-key" accept=".key" hidden>
+
+    <button class="btn btn-dark" id="btn-dec" onclick="doDecrypt()">Расшифровать →</button>
+    <div class="status" id="dec-status"></div>
+  </div>
+
+</div>
+
+<script>
+// ── file inputs ──────────────────────────────────────────────────────────────
+function bindDrop(dropId, inputId, labelId) {
+  const drop  = document.getElementById(dropId);
+  const input = document.getElementById(inputId);
+  const label = document.getElementById(labelId);
+
+  input.addEventListener("change", () => {
+    if (input.files[0]) { label.textContent = input.files[0].name; drop.classList.add("filled"); }
+  });
+  drop.addEventListener("dragover",  e => { e.preventDefault(); drop.classList.add("over"); });
+  drop.addEventListener("dragleave", () => drop.classList.remove("over"));
+  drop.addEventListener("drop", e => {
+    e.preventDefault(); drop.classList.remove("over");
+    const f = e.dataTransfer.files[0];
+    if (!f) return;
+    const dt = new DataTransfer(); dt.items.add(f); input.files = dt.files;
+    label.textContent = f.name; drop.classList.add("filled");
+  });
+}
+
+bindDrop("enc-drop",     "enc-file", "enc-file-label");
+bindDrop("enc-key-drop", "enc-key",  "enc-key-label");
+bindDrop("dec-drop",     "dec-file", "dec-file-label");
+bindDrop("dec-key-drop", "dec-key",  "dec-key-label");
+
+// ── helpers ──────────────────────────────────────────────────────────────────
+function status(id, msg, type) {
+  const el = document.getElementById(id);
+  el.textContent = msg;
+  el.className = "status " + type;
+}
+
+function download(blob, name) {
+  const a = Object.assign(document.createElement("a"), { href: URL.createObjectURL(blob), download: name });
+  document.body.appendChild(a); a.click(); a.remove();
+}
+
+async function safePost(url, form, btnId, statusId, loadingText) {
+  const btn = document.getElementById(btnId);
+  btn.disabled = true; btn.textContent = loadingText;
+  try {
+    const res = await fetch(url, { method: "POST", body: form });
+    if (res.headers.get("content-type")?.includes("application/json")) {
+      const { error } = await res.json();
+      status(statusId, "✗ " + error, "err");
+      return null;
+    }
+    return await res.blob();
+  } catch {
+    status(statusId, "✗ Нет соединения с сервером", "err");
+    return null;
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+// ── actions ──────────────────────────────────────────────────────────────────
+async function generateKey() {
+  const res = await fetch("/generate-key", { method: "POST" });
+  const blob = await res.blob();
+  download(blob, "secret.key");
+}
+
+async function doEncrypt() {
+  const file = document.getElementById("enc-file").files[0];
+  const key  = document.getElementById("enc-key").files[0];
+  if (!file) return status("enc-status", "⚠ Выбери файл", "err");
+  if (!key)  return status("enc-status", "⚠ Выбери .key файл", "err");
+
+  const fd = new FormData();
+  fd.append("file", file); fd.append("key_file", key);
+
+  const blob = await safePost("/encrypt", fd, "btn-enc", "enc-status", "Шифрую…");
+  if (blob) {
+    download(blob, file.name + ".enc");
+    status("enc-status", "✓ " + file.name + ".enc", "ok");
+    document.getElementById("btn-enc").textContent = "Зашифровать →";
+  }
+}
+
+async function doDecrypt() {
+  const file = document.getElementById("dec-file").files[0];
+  const key  = document.getElementById("dec-key").files[0];
+  if (!file) return status("dec-status", "⚠ Выбери .enc файл", "err");
+  if (!key)  return status("dec-status", "⚠ Выбери .key файл", "err");
+
+  const fd = new FormData();
+  fd.append("file", file); fd.append("key_file", key);
+
+  const outName = file.name.endsWith(".enc") ? file.name.slice(0, -4) : file.name;
+  const blob = await safePost("/decrypt", fd, "btn-dec", "dec-status", "Расшифровываю…");
+  if (blob) {
+    download(blob, outName);
+    status("dec-status", "✓ " + outName, "ok");
+    document.getElementById("btn-dec").textContent = "Расшифровать →";
+  }
+}
+</script>
+
+</body>
+</html>
