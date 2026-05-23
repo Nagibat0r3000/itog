@@ -1,4 +1,3 @@
-import os
 import io
 from flask import Flask, render_template, request, send_file, jsonify
 import crypt
@@ -14,7 +13,7 @@ def index():
 
 @app.route("/generate-key", methods=["POST"])
 def generate_key():
-    key_hex = crypt.generate_key_hex()
+    key_hex = crypt.generate_key().hex()
     return jsonify({"key": key_hex})
 
 
@@ -29,12 +28,13 @@ def encrypt():
     if not key_hex:
         return jsonify({"error": "Нужен ключ"}), 400
 
-    if not crypt.validate_key(key_hex):
-        return jsonify({"error": "Неверный формат ключа. Ключ должен быть 64 hex-символа (32 байта)"}), 400
-
     try:
         key = crypt.key_from_hex(key_hex)
-        data = file.read()  # Читаем файл напрямую из памяти
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+
+    try:
+        data = file.read()
         encrypted_data = crypt.encrypt(data, key)
         
         return send_file(
@@ -58,12 +58,13 @@ def decrypt():
     if not key_hex:
         return jsonify({"error": "Нужен ключ"}), 400
 
-    if not crypt.validate_key(key_hex):
-        return jsonify({"error": "Неверный формат ключа. Ключ должен быть 64 hex-символа (32 байта)"}), 400
-
     try:
         key = crypt.key_from_hex(key_hex)
-        data = file.read()  # Читаем файл напрямую из памяти
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+
+    try:
+        data = file.read()
         decrypted_data = crypt.decrypt(data, key)
         
         out_name = file.filename[:-4] if file.filename.endswith(".enc") else file.filename + ".dec"
@@ -74,7 +75,7 @@ def decrypt():
             download_name=out_name,
             mimetype="application/octet-stream"
         )
-    except Exception as e:
+    except Exception:
         return jsonify({"error": "Неверный ключ или повреждённый файл"}), 400
 
 

@@ -9,43 +9,24 @@ def generate_key() -> bytes:
     return get_random_bytes(32)
 
 
-def generate_key_hex() -> str:
-    """Генерирует случайный ключ в hex-формате для отображения"""
-    return generate_key().hex()
-
-
 def key_from_hex(hex_key: str) -> bytes:
-    """Преобразует hex-строку в bytes ключ"""
+    """Преобразует hex-строку в bytes ключ. Проверяет длину и формат."""
+    if len(hex_key) != 64:
+        raise ValueError("Ключ должен быть 64 hex символа")
     try:
         return binascii.unhexlify(hex_key)
     except binascii.Error:
-        raise ValueError("Неверный формат ключа. Ключ должен быть в hex.")
-
-
-def key_to_hex(key: bytes) -> str:
-    """Преобразует bytes ключ в hex-строку"""
-    return key.hex()
-
-
-def validate_key(hex_key: str) -> bool:
-    """Проверяет, что ключ — корректный hex из 64 символов (32 байта)"""
-    if len(hex_key) != 64:
-        return False
-    try:
-        binascii.unhexlify(hex_key)
-        return True
-    except binascii.Error:
-        return False
+        raise ValueError("Неверный формат ключа")
 
 
 def encrypt(data: bytes, key: bytes) -> bytes:
-    """Возвращает IV + зашифрованные данные."""
+    """Возвращает IV + зашифрованные данные"""
     cipher = AES.new(key, AES.MODE_CBC)
     return cipher.iv + cipher.encrypt(pad(data, AES.block_size))
 
 
 def decrypt(data: bytes, key: bytes) -> bytes:
-    """Принимает IV + зашифрованные данные."""
+    """Принимает IV + зашифрованные данные"""
     iv, ciphertext = data[:16], data[16:]
     cipher = AES.new(key, AES.MODE_CBC, iv=iv)
     return unpad(cipher.decrypt(ciphertext), AES.block_size)
