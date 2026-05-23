@@ -1,11 +1,13 @@
 import os
+import io
 import uuid
+import shutil
 from flask import Flask, render_template, request, send_file, jsonify
 from werkzeug.utils import secure_filename
 import crypt
 
 app = Flask(__name__)
-app.config["MAX_CONTENT_LENGTH"] = 64 * 1024 * 1024  # 64 MB
+app.config["MAX_CONTENT_LENGTH"] = 1024 * 1024 * 1024  # 1 GB
 
 UPLOAD_DIR = "uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
@@ -35,7 +37,6 @@ def index():
 
 @app.route("/generate-key", methods=["POST"])
 def generate_key():
-    """Генерирует случайный ключ и возвращает его в виде hex-строки"""
     key_hex = crypt.generate_key_hex()
     return jsonify({"key": key_hex})
 
@@ -51,7 +52,6 @@ def encrypt():
     if not key_hex:
         return jsonify({"error": "Нужен ключ"}), 400
 
-    # Проверка и преобразование ключа
     if not crypt.validate_key(key_hex):
         return jsonify({"error": "Неверный формат ключа. Ключ должен быть 64 hex-символа (32 байта)"}), 400
 
@@ -62,20 +62,21 @@ def encrypt():
         key = crypt.key_from_hex(key_hex)
         data = open(src, "rb").read()
         encrypted_data = crypt.encrypt(data, key)
-        open(out, "wb").write(encrypted_data)
         
-        # Отправляем файл и удаляем только после отправки
-        response = send_file(out, as_attachment=True, download_name=file.filename + ".enc")
-        
-        # Удаляем временные файлы после отправки
-        @response.call_on_close
-        def cleanup():
-            _cleanup(src, out)
+        # Не сохраняем результат на диск — отправляем сразу из памяти
+        response = send_file(
+            io.BytesIO(encrypted_data),
+            as_attachment=True,
+            download_name=file.filename + ".enc",
+            mimetype="application/octet-stream"
+        )
         
         return response
     except Exception as e:
-        _cleanup(src, out)
         return jsonify({"error": str(e)}), 500
+    finally:
+        # ВАЖНО: удаляем исходный файл (результат даже не создавался на диске)
+        _cleanup(src)
 
 
 @app.route("/decrypt", methods=["POST"])
@@ -89,33 +90,38 @@ def decrypt():
     if not key_hex:
         return jsonify({"error": "Нужен ключ"}), 400
 
-    # Проверка и преобразование ключа
     if not crypt.validate_key(key_hex):
         return jsonify({"error": "Неверный формат ключа. Ключ должен быть 64 hex-символа (32 байта)"}), 400
 
     src = _save(file)
     out_name = file.filename[:-4] if file.filename.endswith(".enc") else file.filename + ".dec"
-    out = src + ".dec"
 
     try:
         key = crypt.key_from_hex(key_hex)
         data = open(src, "rb").read()
         decrypted_data = crypt.decrypt(data, key)
-        open(out, "wb").write(decrypted_data)
         
-        # Отправляем файл и удаляем только после отправки
-        response = send_file(out, as_attachment=True, download_name=out_name)
-        
-        # Удаляем временные файлы после отправки
-        @response.call_on_close
-        def cleanup():
-            _cleanup(src, out)
+        # Отправляем результат из памяти, без сохранения на диск
+        response = send_file(
+            io.BytesIO(decrypted_data),
+            as_attachment=True,
+            download_name=out_name,
+            mimetype="application/octet-stream"
+        )
         
         return response
     except Exception as e:
-        _cleanup(src, out)
         return jsonify({"error": "Неверный ключ или повреждённый файл"}), 400
+    finally:
+        # Удаляем загруженный файл
+        _cleanup(src)
 
 
 if __name__ == "__main__":
+    # Очистка папки при старте
+    if os.path.exists(UPLOAD_DIR):
+        shutil.rmtree(UPLOAD_DIR)
+    os.makedirs(UPLOAD_DIR, exist_ok=True)
+    
+    print("Сервер запущен. Временные файлы не сохраняются.")
     app.run(debug=True)
