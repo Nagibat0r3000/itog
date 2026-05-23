@@ -22,8 +22,9 @@ def _save(file_storage) -> str:
 def _cleanup(*paths):
     for p in paths:
         try:
-            os.remove(p)
-        except FileNotFoundError:
+            if p and os.path.exists(p):
+                os.remove(p)
+        except Exception:
             pass
 
 
@@ -60,12 +61,21 @@ def encrypt():
     try:
         key = crypt.key_from_hex(key_hex)
         data = open(src, "rb").read()
-        open(out, "wb").write(crypt.encrypt(data, key))
-        return send_file(out, as_attachment=True, download_name=file.filename + ".enc")
+        encrypted_data = crypt.encrypt(data, key)
+        open(out, "wb").write(encrypted_data)
+        
+        # Отправляем файл и удаляем только после отправки
+        response = send_file(out, as_attachment=True, download_name=file.filename + ".enc")
+        
+        # Удаляем временные файлы после отправки
+        @response.call_on_close
+        def cleanup():
+            _cleanup(src, out)
+        
+        return response
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
-    finally:
         _cleanup(src, out)
+        return jsonify({"error": str(e)}), 500
 
 
 @app.route("/decrypt", methods=["POST"])
@@ -90,9 +100,18 @@ def decrypt():
     try:
         key = crypt.key_from_hex(key_hex)
         data = open(src, "rb").read()
-        open(out, "wb").write(crypt.decrypt(data, key))
-        return send_file(out, as_attachment=True, download_name=out_name)
+        decrypted_data = crypt.decrypt(data, key)
+        open(out, "wb").write(decrypted_data)
+        
+        # Отправляем файл и удаляем только после отправки
+        response = send_file(out, as_attachment=True, download_name=out_name)
+        
+        # Удаляем временные файлы после отправки
+        @response.call_on_close
+        def cleanup():
+            _cleanup(src, out)
+        
+        return response
     except Exception as e:
-        return jsonify({"error": "Неверный ключ или повреждённый файл"}), 400
-    finally:
         _cleanup(src, out)
+        return jsonify({"error": "Неверный ключ или повреждённый файл"}), 400
