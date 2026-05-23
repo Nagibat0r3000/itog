@@ -8,77 +8,81 @@ app.config["MAX_CONTENT_LENGTH"] = 1024 * 1024 * 1024  # 1 GB
 
 @app.route("/")
 def index():
+    """Главная страница"""
     return render_template("index.html")
 
 
 @app.route("/generate-key", methods=["POST"])
 def generate_key():
-    key_hex = crypt.generate_key().hex()
-    return jsonify({"key": key_hex})
+    """Генерирует случайный AES-256 ключ и возвращает в hex-формате"""
+    return jsonify({"key": crypt.generate_key().hex()})
+
+
+def process_file(endpoint, file, key_hex):
+    """
+    Общая логика для шифрования и расшифровки.
+    Проверяет входные данные, обрабатывает файл и возвращает результат.
+    """
+    if not file:
+        return jsonify({"error": "Нужен файл"}), 400
+    if not key_hex:
+        return jsonify({"error": "Нужен ключ"}), 400
+
+    try:
+        key = crypt.key_from_hex(key_hex)
+    except ValueError as error:
+        return jsonify({"error": str(error)}), 400
+
+    try:
+        data = file.read()
+        result = endpoint(data, key)
+        return send_file(
+            io.BytesIO(result),
+            as_attachment=True,
+            download_name=file.filename
+        )
+    except Exception:
+        return jsonify({"error": "Ошибка обработки"}), 500
 
 
 @app.route("/encrypt", methods=["POST"])
 def encrypt():
+    """Шифрует загруженный файл"""
     file = request.files.get("file")
     key_hex = request.form.get("key")
 
-    if not file:
-        return jsonify({"error": "Нужен файл"}), 400
-    
-    if not key_hex:
-        return jsonify({"error": "Нужен ключ"}), 400
+    def operation(data, key):
+        return crypt.encrypt(data, key)
 
-    try:
-        key = crypt.key_from_hex(key_hex)
-    except ValueError as e:
-        return jsonify({"error": str(e)}), 400
+    response = process_file(operation, file, key_hex)
+    if isinstance(response, tuple):
+        return response
 
-    try:
-        data = file.read()
-        encrypted_data = crypt.encrypt(data, key)
-        
-        return send_file(
-            io.BytesIO(encrypted_data),
-            as_attachment=True,
-            download_name=file.filename + ".enc",
-            mimetype="application/octet-stream"
-        )
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+    response.download_name = file.filename + ".enc"
+    return response
 
 
 @app.route("/decrypt", methods=["POST"])
 def decrypt():
+    """Расшифровывает загруженный файл (должен быть .enc)"""
     file = request.files.get("file")
     key_hex = request.form.get("key")
 
-    if not file:
-        return jsonify({"error": "Нужен файл"}), 400
-    
-    if not key_hex:
-        return jsonify({"error": "Нужен ключ"}), 400
+    def operation(data, key):
+        return crypt.decrypt(data, key)
 
-    try:
-        key = crypt.key_from_hex(key_hex)
-    except ValueError as e:
-        return jsonify({"error": str(e)}), 400
+    response = process_file(operation, file, key_hex)
+    if isinstance(response, tuple):
+        return response
 
-    try:
-        data = file.read()
-        decrypted_data = crypt.decrypt(data, key)
-        
-        out_name = file.filename[:-4] if file.filename.endswith(".enc") else file.filename + ".dec"
-        
-        return send_file(
-            io.BytesIO(decrypted_data),
-            as_attachment=True,
-            download_name=out_name,
-            mimetype="application/octet-stream"
-        )
-    except Exception:
-        return jsonify({"error": "Неверный ключ или повреждённый файл"}), 400
+    if file.filename.endswith(".enc"):
+        name = file.filename[:-4]
+    else:
+        name = file.filename + ".dec"
+    response.download_name = name
+    return response
 
 
 if __name__ == "__main__":
-    print("Сервер запущен. Файлы не сохраняются на диск.")
+    print("Сервер запущен. Адрес: http://127.0.0.1:5000")
     app.run(debug=True)
