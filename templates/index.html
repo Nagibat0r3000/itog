@@ -73,7 +73,7 @@
     .key-input-wrapper {
       display: flex;
       gap: 0.75rem;
-      margin-bottom: 0.75rem;
+      margin-bottom: 0.5rem;
       flex-wrap: wrap;
     }
 
@@ -118,7 +118,19 @@
       font-family: 'Fira Mono', monospace;
       font-size: 0.7rem;
       color: var(--muted);
+      margin-bottom: 0.5rem;
     }
+
+    .key-status {
+      font-family: 'Fira Mono', monospace;
+      font-size: 0.75rem;
+      margin-top: 0.5rem;
+      padding: 0.4rem 0.75rem;
+      border-radius: 7px;
+      display: none;
+    }
+    .key-status.ok  { display: block; background: #d8f3dc; color: var(--green); }
+    .key-status.err { display: block; background: #f9dada; color: var(--red); }
 
     .divider {
       height: 1px;
@@ -191,7 +203,7 @@
     .btn-dark { background: var(--ink); color: #fff; }
     .btn-dark:hover:not(:disabled) { opacity: .85; }
 
-    .status {
+    .action-status {
       font-family: 'Fira Mono', monospace;
       font-size: 0.75rem;
       margin-top: 0.75rem;
@@ -199,8 +211,8 @@
       border-radius: 7px;
       display: none;
     }
-    .status.ok  { display: block; background: #d8f3dc; color: var(--green); }
-    .status.err { display: block; background: #f9dada; color: var(--red); }
+    .action-status.ok  { display: block; background: #d8f3dc; color: var(--green); }
+    .action-status.err { display: block; background: #f9dada; color: var(--red); }
   </style>
 </head>
 <body>
@@ -219,6 +231,7 @@
       <button class="btn-small" onclick="generateKey()">Сгенерировать</button>
     </div>
     <div class="key-hint">Пример: d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f6</div>
+    <div class="key-status" id="key-status"></div>
   </div>
 
   <div class="divider"></div>
@@ -232,7 +245,7 @@
     </div>
     <input type="file" id="enc-file" hidden>
     <button class="btn btn-dark" id="btn-enc" onclick="doEncrypt()">Зашифровать →</button>
-    <div class="status" id="enc-status"></div>
+    <div class="action-status" id="enc-status"></div>
   </div>
 
   <div class="divider"></div>
@@ -246,7 +259,7 @@
     </div>
     <input type="file" id="dec-file" accept=".enc" hidden>
     <button class="btn btn-dark" id="btn-dec" onclick="doDecrypt()">Расшифровать →</button>
-    <div class="status" id="dec-status"></div>
+    <div class="action-status" id="dec-status"></div>
   </div>
 </div>
 
@@ -275,14 +288,26 @@ bindDrop("enc-drop", "enc-file", "enc-file-label");
 bindDrop("dec-drop", "dec-file", "dec-file-label");
 
 // ── helpers ──────────────────────────────────────────────────────────────────
-function status(id, msg, type) {
+function keyStatus(msg, type) {
+  const el = document.getElementById("key-status");
+  el.textContent = msg;
+  el.className = "key-status " + type;
+  setTimeout(() => {
+    if (el.className === "key-status " + type) {
+      el.style.display = "none";
+      setTimeout(() => { if (el.className === "key-status " + type) el.style.display = ""; }, 2000);
+    }
+  }, 3000);
+}
+
+function actionStatus(id, msg, type) {
   const el = document.getElementById(id);
   el.textContent = msg;
-  el.className = "status " + type;
+  el.className = "action-status " + type;
   setTimeout(() => {
-    if (el.className === "status " + type) {
+    if (el.className === "action-status " + type) {
       el.style.display = "none";
-      setTimeout(() => { if (el.className === "status " + type) el.style.display = ""; }, 2000);
+      setTimeout(() => { if (el.className === "action-status " + type) el.style.display = ""; }, 3000);
     }
   }, 3000);
 }
@@ -293,18 +318,17 @@ function download(blob, name) {
 }
 
 async function generateKey() {
-  const statusId = "enc-status";
   try {
     const res = await fetch("/generate-key", { method: "POST" });
     const data = await res.json();
     if (data.key) {
       document.getElementById("key-input").value = data.key;
-      status("enc-status", "✓ Новый ключ сгенерирован и вставлен в поле", "ok");
+      keyStatus("✓ Новый ключ сгенерирован и вставлен в поле", "ok");
     } else {
-      status(statusId, "✗ Ошибка генерации ключа", "err");
+      keyStatus("✗ Ошибка генерации ключа", "err");
     }
   } catch {
-    status(statusId, "✗ Нет соединения с сервером", "err");
+    keyStatus("✗ Нет соединения с сервером", "err");
   }
 }
 
@@ -312,8 +336,8 @@ async function doEncrypt() {
   const file = document.getElementById("enc-file").files[0];
   const key = document.getElementById("key-input").value.trim();
   
-  if (!file) return status("enc-status", "⚠ Выбери файл", "err");
-  if (!key) return status("enc-status", "⚠ Введи или сгенерируй ключ", "err");
+  if (!file) return actionStatus("enc-status", "⚠ Выбери файл", "err");
+  if (!key) return actionStatus("enc-status", "⚠ Введи или сгенерируй ключ", "err");
 
   const fd = new FormData();
   fd.append("file", file);
@@ -327,14 +351,14 @@ async function doEncrypt() {
     const res = await fetch("/encrypt", { method: "POST", body: fd });
     if (res.headers.get("content-type")?.includes("application/json")) {
       const { error } = await res.json();
-      status("enc-status", "✗ " + error, "err");
+      actionStatus("enc-status", "✗ " + error, "err");
       return;
     }
     const blob = await res.blob();
     download(blob, file.name + ".enc");
-    status("enc-status", "✓ " + file.name + ".enc готов", "ok");
+    actionStatus("enc-status", "✓ " + file.name + ".enc готов", "ok");
   } catch {
-    status("enc-status", "✗ Ошибка соединения", "err");
+    actionStatus("enc-status", "✗ Ошибка соединения", "err");
   } finally {
     btn.disabled = false;
     btn.textContent = "Зашифровать →";
@@ -345,8 +369,8 @@ async function doDecrypt() {
   const file = document.getElementById("dec-file").files[0];
   const key = document.getElementById("key-input").value.trim();
   
-  if (!file) return status("dec-status", "⚠ Выбери .enc файл", "err");
-  if (!key) return status("dec-status", "⚠ Введи ключ", "err");
+  if (!file) return actionStatus("dec-status", "⚠ Выбери .enc файл", "err");
+  if (!key) return actionStatus("dec-status", "⚠ Введи ключ", "err");
 
   const fd = new FormData();
   fd.append("file", file);
@@ -360,15 +384,15 @@ async function doDecrypt() {
     const res = await fetch("/decrypt", { method: "POST", body: fd });
     if (res.headers.get("content-type")?.includes("application/json")) {
       const { error } = await res.json();
-      status("dec-status", "✗ " + error, "err");
+      actionStatus("dec-status", "✗ " + error, "err");
       return;
     }
     const blob = await res.blob();
     const outName = file.name.endsWith(".enc") ? file.name.slice(0, -4) : file.name + ".decrypted";
     download(blob, outName);
-    status("dec-status", "✓ Расшифровано: " + outName, "ok");
+    actionStatus("dec-status", "✓ Расшифровано: " + outName, "ok");
   } catch {
-    status("dec-status", "✗ Ошибка соединения", "err");
+    actionStatus("dec-status", "✗ Ошибка соединения", "err");
   } finally {
     btn.disabled = false;
     btn.textContent = "Расшифровать →";
