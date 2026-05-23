@@ -115,3 +115,7 @@ def decrypt():
     except Exception as e:
         _cleanup(src, out)
         return jsonify({"error": "Неверный ключ или повреждённый файл"}), 400
+
+
+if __name__ == "__main__":
+    app.run(debug=True)
